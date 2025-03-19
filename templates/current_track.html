@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Current Track</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Currently Playing</h1>
+    {% if track %}
+        <p>{{ track.name }} by {{ track.artist }}</p>
+        <p><a href="{{ track.youtube }}" target="_blank">Listen on YouTube</a></p>
+    {% else %}
+        <p>No track currently playing.</p>
+    {% endif %}
+    <a href="/">Back to Home</a>
+</body>
+</html>
