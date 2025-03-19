@@ -5,14 +5,49 @@
     <title>Current Track</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+<script>
+    let currentTrackID = null; // Stocke l'ID du morceau en cours
+
+    async function fetchTrack() {
+    const response = await fetch('/api/current_track');
+    const data = await response.json();
+
+    if (data.error) {
+    document.getElementById('track-info').innerText = data.error;
+    document.getElementById('youtube-frame').src = "";
+    document.getElementById('spotify-frame').src = "";
+} else {
+    document.getElementById('track-info').innerText = `${data.track_name} by ${data.artist_name}`;
+
+    if (data.youtube_error || data.video_id === null) {
+        document.getElementById('youtube-frame').src = "";
+        document.getElementById('youtube-error').innerText = "YouTube API limit reached — unable to load video.";
+    } else {
+        document.getElementById('youtube-error').innerText = "";
+        document.getElementById('youtube-frame').src = `https://www.youtube.com/embed/${data.video_id}?autoplay=1`;
+    }
+
+    // Spotify Embed
+    document.getElementById('spotify-frame').src = `https://open.spotify.com/embed/track/${data.spotify_id}`;
+}
+}
+    setInterval(fetchTrack, 10000); // refresh every 10 sec
+    window.onload = fetchTrack;
+</script>
 <body>
     <h1>Currently Playing</h1>
-    {% if track %}
-        <p>{{ track.name }} by {{ track.artist }}</p>
-        <p><a href="{{ track.youtube }}" target="_blank">Listen on YouTube</a></p>
-    {% else %}
-        <p>No track currently playing.</p>
-    {% endif %}
+    <br>
+    <p id="track-info">Loading...</p>
+    <br>
+    <iframe id="spotify-frame" src="" width="560" height="100" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+    <br>
+    <p id="youtube-error" style="color:red;"></p>
+
+    <iframe id="youtube-frame" width="560" height="315"
+    src="" frameborder="0" allow="encrypted-media" allowfullscreen></iframe>
+
+    <br>
+
     <a href="/">Back to Home</a>
 </body>
 </html>

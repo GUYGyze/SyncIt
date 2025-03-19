@@ -1,9 +1,12 @@
-from flask import Flask, redirect, request, session, url_for, render_template
+from flask import Flask, redirect, request, session, url_for, render_template, jsonify
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 import os
 import requests
 import base64
+
+last_track_id = None
+last_youtube_url = None
 
 load_dotenv(dotenv_path='sec.env')
 
@@ -21,23 +24,74 @@ CURRENT_TRACK_URL = 'https://api.spotify.com/v1/me/player/currently-playing'
 SCOPE = 'user-read-playback-state'
 
 def search_youtube(query):
+    from googleapiclient.errors import HttpError
+
     youtube = build('youtube', 'v3', developerKey=os.getenv('YOUTUBE_API_KEY'))
-    
-    request = youtube.search().list(
-        part='snippet',
-        q=query,
-        type='video',
-        maxResults=1
-    )
-    
-    response = request.execute()
-    
-    if response['items']:
-        video_id = response['items'][0]['id']['videoId']
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-        return video_url
-    else:
-        return None
+
+    try:
+        request = youtube.search().list(
+            part='snippet',
+            q=query,
+            type='video',
+            maxResults=1
+        )
+        response = request.execute()
+
+        if response['items']:
+            video_id = response['items'][0]['id']['videoId']
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
+            return video_url
+        else:
+            return None
+
+    except HttpError as e:
+        # Si quota dépassé ou autre erreur
+        print(f"YouTube API Error: {e}")
+        return "YOUTUBE_QUOTA_EXCEEDED"
+
+
+@app.route('/api/current_track')
+def api_current_track():
+    global last_track_id, last_youtube_url
+
+    access_token = session.get('access_token')
+    if not access_token:
+        return jsonify({'error': 'Not logged in'})
+
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+    }
+    r = requests.get(CURRENT_TRACK_URL, headers=headers)
+
+    if r.status_code != 200:
+        return jsonify({'error': 'No track playing'})
+
+    data = r.json()
+    track_name = data['item']['name']
+    artist_name = data['item']['artists'][0]['name']
+    track_id = data['item']['id']
+
+    if track_id != last_track_id:
+        query = f"{track_name} {artist_name}"
+        youtube_url = search_youtube(query)
+
+        if youtube_url == "YOUTUBE_QUOTA_EXCEEDED":
+            video_id = None
+            quota_exceeded = True
+        else:
+            video_id = youtube_url.split("v=")[-1] if youtube_url else None
+            quota_exceeded = False
+
+        last_track_id = track_id
+        last_youtube_url = {
+            'track_name': track_name,
+            'artist_name': artist_name,
+            'video_id': video_id,
+            'spotify_id': track_id,
+            'quota_exceeded': quota_exceeded
+        }
+
+    return jsonify(last_youtube_url)
 
 @app.route('/')
 def index():
@@ -99,26 +153,6 @@ def callback():
     session['access_token'] = token_response_data['access_token']
 
     return redirect(url_for('current_track'))
-
-@app.route('/current_track')
-def current_track():
-    access_token = session.get('access_token')
-    if not access_token:
-        return redirect(url_for('login'))
-
-    headers = {
-        'Authorization': f'Bearer {access_token}'
-    }
-    r = requests.get(CURRENT_TRACK_URL, headers=headers)
-
-    if r.status_code != 200:
-        return 'No track currently playing.'
-
-    data = r.json()
-    track_name = data['item']['name']
-    artist_name = data['item']['artists'][0]['name']
-
-    return f"You're listening to: {track_name} by {artist_name}"
 
 if __name__ == '__main__':
     app.run(debug=True)
